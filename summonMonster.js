@@ -26,7 +26,7 @@ const config = {
 // const turnAlertActive = game.modules.get("turnAlert")?.active;
 
 // Build options for folders to summon from
-let packOptions = `<option value=""></option>` + game.packs.filter(p => p.documentName === "Actor" && config.packSource.includes(p.metadata.packageName) && !config.ignoreCompendiums.includes(p.metadata.name) && p.visible).map(p => `<option value="${p.collection}">${p.title}</option>`);
+let packOptions = `<option value=""></option>` + game.packs.filter(p => p.documentName === "Actor" && config.packSource.includes(p.metadata.packageName) && !config.ignoreCompendiums.includes(p.metadata.name) && p.visible).map(p => `<option value="${p.collection}">${game.i18n.localize(p.title)}</option>`);
 
 let summonerActor;
 let summonerToken;
@@ -40,7 +40,7 @@ let range = 0;
 if (game.user.isGM || !config.useUserLinkedActorOnly) {
     // GMs must have a token selected
     let selectedTokens = canvas.tokens.controlled;
-    if (!selectedTokens.length) ui.notifications.warn("No token chosen as summoner.");
+    if (!selectedTokens.length) ui.notifications.warn("No se ha elegido ningún token como convocador.");
     else {
         summonerToken = selectedTokens[0];
         summonerActor = summonerToken.actor;
@@ -49,62 +49,77 @@ if (game.user.isGM || !config.useUserLinkedActorOnly) {
 else {
     // Non GMs must have a character and a token for that character on the map
     summonerActor = game.user.character;
-    if (!summonerActor) ui.notifications.warn("No token chosen as summoner.");
+    if (!summonerActor) ui.notifications.warn("No se ha elegido ningún token como convocador.");
     else {
         summonerToken = canvas.tokens.ownedTokens.filter(o => o.actor.id === summonerActor.id)[0];
-        if (!summonerToken) ui.notifications.warn(`No token of summoner ${summonerActor.name} available.`);
+        if (!summonerToken) ui.notifications.warn(`No hay ningún token disponible de ${summonerActor.name}.`);
     }
 }
 
 if (summonerActor && summonerToken) {
     // Build list of character's classes sorted by level (high to low)
     classArray = summonerActor.itemTypes.class.sort((a, b) => {return b.system.level - a.system.level});
-    const classOptions = classArray.map((p, index) => `<option value="${index}">${p.name} (Level ${p.system.level})</option>`);
+    const classOptions = classArray.map((p, index) => `<option value="${index}">${p.name} (${game.i18n.localize("PF1.Level")} ${p.system.level})</option>`);
     
     let ownerCheck = "";
-    if (game.user.isGM && summonerActor.hasPlayerOwner) ownerCheck = `<div class="form-group"><label>Give Ownership to ${summonerActor.name}'s Owners:</label><input type="checkbox" id="ownerCheck"></div>`;
+    if (game.user.isGM && summonerActor.hasPlayerOwner) ownerCheck = `<div class="form-group"><label>Dar propiedad a los propietarios de ${summonerActor.name}:</label><input type="checkbox" id="ownerCheck"></div>`;
     
     // Build UI
     const form = `
         <form class="flexcol">
             <div class="form-group">
-                <label>Summoner:</label>
+                <label>Convocador:</label>
                 <p>${summonerActor.name}</p>
             </div>
             <div class="form-group">
-                <label>CL Class:</label>
+                <label>NL de la clase:</label>
                 <select id="classSelect">${classOptions}</select>
             </div>
             <div class="form-group">
-                <label>CL Override:</label>
-                <input type="number" id="clOverride" placeholder="CL (e.g. for scrolls)">
+                <label>Sobreescribir NL:</label>
+                <input type="number" id="clOverride" placeholder="NL (ej. desde pergaminos)">
             </div>
             <div class="form-group">
-                <label>Summon From:</label>
+                <label>Convocar desde (compendium):</label>
                 <select id="sourceSelect">
                     ${packOptions}
                 </select>
             </div>
             <div class="form-group">
-                <label>Summon:</label>
+                <label>Convocación:</label>
                 <select id="monsterSelect">
                 </select>
             </div>
             <div class="form-group">
-                <label>Number to Summon:</label>
+                <label>Cantidad a convocar:</label>
                 <input type="text" id="summonCount" placeholder="e.g. 1, 1d4+1">
             </div>
             <div class="form-group">
-                <label>Augment Summoning:</label>
+                <label>Convocación aumentada:</label>
                 <input type="checkbox" id="augmentCheck">
             </div>
             <div class="form-group">
-                <label>Extend (Metamagic):</label>
+                <label>Extender (Metamagia):</label>
                 <input type="checkbox" id="extendCheck">
             </div>
             <div class="form-group">
-                <label>Reach (Metamagic):</label>
+                <label>Alcance (Metamagia):</label>
                 <input type="checkbox" id="reachCheck">
+            </div>
+            <div class="form-group">
+                <label>${game.i18n.localize("PF1.PACKS.monster-templates")}:</label>
+                <label for="celestial" class="radio">
+                    Celestial
+                    <input name="summoningTemplate" id="celestial" type="radio">
+                </label>
+                <label for="infernal" class="radio">
+                    Infernal
+                    <input name="summoningTemplate" id="infernal" type="radio">
+                </label>
+                <label for="none" class="radio">
+                    Ninguna
+                    <input name="summoningTemplate" id="none" type="radio" checked>
+                </label>
             </div>
             ${ownerCheck}
         </form>
@@ -112,12 +127,12 @@ if (summonerActor && summonerToken) {
     
     // Display UI
     const dialog = new Dialog({
-      title: "Summon Monster",
+      title: "Convocar monstruo",
       content: form,
       buttons: {
         use: {
           icon: '<i class="fas fa-dice-d20"></i>',
-          label: "Summon",
+          label: "Convocar",
           callback: importMonster
         }
       },
@@ -134,16 +149,46 @@ async function populateMonster(htm, event) {
     // Get the chosen folder
     const selectedPack = event.target.value;
     const monsterSelect = htm.find("#monsterSelect")[0];
-    
+
     // Populate the options or leave blank if no target chosen
-    let monsterOptions;
+    let monsterOptions = [];
     if (selectedPack) {
-        const monsterList = await game.packs.get(selectedPack).getIndex();
-        monsterOptions = monsterList.contents.sort((a, b) => { return a.name > b.name ? 1 : -1; }).map(p => `<option value="${p._id}">${p.name}</option>`);
+        /** @type {CompendiumCollection} */
+        let thisPack = game.packs.get(selectedPack);
+        if (thisPack.folders.size == 0) {
+        let monsterList = await thisPack.getIndex();
+        monsterOptions = monsterList.contents
+            .sort((a, b) => a.name > b.name ? 1 : -1)
+            .map((p) => `<option value="${p._id}">${p.name}</option>`);
+        } else {
+            /** @type {CompendiumFolderCollection} */
+            let folders = thisPack.folders;
+            for (let folder of folders) {
+                let monsterOptGroup = `<optgroup label="${folder.name}">`;
+                monsterOptGroup += folder.contents
+                .sort((a, b) => a.name > b.name ? 1 : -1)
+                .map((p) => `<option value="${p._id}">${p.name}</option>`)
+                .join("");
+                // Closing optgroup
+                monsterOptGroup += `</optgroup>`;
+                monsterOptions.push(monsterOptGroup);
+            }
+
+            let monsterList = (await thisPack.getIndex()).contents?.filter((m) => !m.folder);
+            if (monsterList.length > 0) {
+                let monsterOptGroup = `<optgroup label="Sin categoría">`;
+                for (let monsterWithoutFolder of monsterList) {
+                    monsterOptGroup += `<option value="${monsterWithoutFolder._id}">${monsterWithoutFolder.name}</option>`;
+                }
+                // Closing optgroup
+                monsterOptGroup += `</optgroup>`;
+                monsterOptions.push(monsterOptGroup);
+            }
+        }
     }
-    
+
     // Replace options
-    monsterSelect.innerHTML = monsterOptions;
+    monsterSelect.innerHTML = monsterOptions.sort().join("");
 }
 
 /**
@@ -180,6 +225,14 @@ async function importMonster(html) {
     // Get the details of the selected summon
     let selectedPack = html.find("#sourceSelect")[0].value;
     let selectedMonster = html.find("#monsterSelect")[0].value;
+    // Get the selected template
+    const templates = {
+        celestial: "8kHcvgFNoGObDhQ8",
+        infernal: "kDaBd3zlTauG2f9n",
+    };
+    let selectedTemplate = templates[
+        html.find("input:radio[name='summoningTemplate']:checked")?.prop("id") || null
+    ];
     
     // Gets info about the destination folder, creates it if it does not exist
     let folderID = "";
@@ -200,6 +253,12 @@ async function importMonster(html) {
     
     createdMonster = monsterEntity.toObject();
     createdMonster = await Actor.create(createdMonster);
+
+    if (selectedTemplate) {
+        const template = await game.packs.get("pf1.monster-templates").getDocument(selectedTemplate);
+        const templateData = game.items.fromCompendium(template);
+        await createdMonster.createEmbeddedDocuments("Item", [templateData]);
+    }
     
     // Update the actor permissions
     let currentPermission = createdMonster.permission;
@@ -221,7 +280,7 @@ async function importMonster(html) {
     
     // Verify summon count formula is valid and will result in at least 1 summon
     if (!Roll.validate(countFormula) || (await testRoll.evaluate({minimize: true}).total <= 0)) {
-        ui.notifications.error(`${countFormula} not a valid roll formula. Defaulting to 1.`);
+        ui.notifications.error(`${countFormula} no es una fórmula de dados correcta. Usando 1 en su defecto.`);
         countFormula = "1";
     }
     
@@ -239,14 +298,14 @@ async function importMonster(html) {
     
     // Validate caster level override is a number > 0
     if (!isNaN(clOverride)) {
-        if (clOverride <= 0) ui.notifications.error(`${clOverride} not a valid caster level. Defaulting to class level.`);
+        if (clOverride <= 0) ui.notifications.error(`${clOverride} no es un NL válido. Uso de nivel de clase por defecto.`);
         else casterLevel = clOverride;
     }
     
     //Set up buff for augment
     let buffData = null;
     if (html.find("#augmentCheck")[0].checked) {
-        buffData = { type: "buff", name: "Augment Summoning", system: { buffType: "temp" } };
+        buffData = { type: "buff", name: "Convocación aumentada", system: { buffType: "temp" } };
     }
     
     // Set up range as close or medium based on caster level and range metamagic
@@ -259,38 +318,34 @@ async function importMonster(html) {
     // Create the buff on the actor for augment, set the bonuses, hide it on the token, and change actor's name
     if (buffData) {
         await createdMonster.createEmbeddedDocuments("Item", [buffData]);
-        let buff = createdMonster.items.find(o => o.name === "Augment Summoning" && o.type === "buff");
+        let buff = createdMonster.items.find(o => o.name === "Convocación aumentada" && o.type === "buff");
         let changes = [];
         changes.push({formula: "4", priority: 1, target: "str", modifier: "enh"});
         changes.push({formula: "4", priority: 1, target: "con", modifier: "enh"});
         await buff.update({"system.changes": changes, "system.hideFromToken": true});
         await buff.update({"system.active": true});
-        let actorName = createdMonster.name + " (Augmented)";
+        let actorName = createdMonster.name + " (Aumentado/a)";
         await createdMonster.update({"name": actorName, "token.name": actorName});
     }
     
     
     // Wait for summoner to spawn the rolled number of tokens on the canvas
-    ui.notifications.info(`Click spawn location for ${createdMonster.name} within ${range} ft of summoner (${gNumSpawned} of ${gNeedSpawn})`);
+    ui.notifications.info(`Haz click en el lugar de colocación de ${createdMonster.name} en un rango de ${range} ft desde el convocador (${gNumSpawned} de ${gNeedSpawn})`);
     captureClick();
     
     await sleepWhilePlacing();
     
     stopCapture();
     
-    ui.notifications.info("Done spawning summons!");
-    
-    
-    // Check if dice so nice is active and use it to show the roll if applicable
-    if (game.modules.get("dice-so-nice")?.active) game.dice3d.showForRoll(roll);
+    ui.notifications.info("¡Haz terminado de colocar convocaciones!");
     
     // Create chat message about summon
     let msg = `<div class="pf1 chat-card">
                     <header class="card-header flexrow">
-                        <h3 class="actor-name">Summoning!</h3>
+                        <h3 class="actor-name">¡Convocación!</h3>
                     </header>
                     <div class="result-text">
-                        <p><a class="inline-roll inline-result" title="${roll.formula}" data-roll="${encodeURI(JSON.stringify(roll))}"><i class="fas fa-dice-d20"></i> ${roll.total}</a> ${createdMonster.name} summoned for ${casterLevel} rounds within ${range} feet range.</p>
+                        <p><a class="inline-roll inline-result" title="${roll.formula}" data-roll="${encodeURI(JSON.stringify(roll))}"><i class="fas fa-dice-d20"></i> ${roll.total}</a> ${createdMonster.name} convocado durante ${casterLevel} ronda/s en un rango de ${range} pies.</p>
                     </div>
                 </div>`
                 
@@ -318,7 +373,7 @@ async function handleClick(event) {
     if(gNumSpawned < gNeedSpawn && !!createdMonster){
         await spawnToken();
         gNumSpawned++;
-        ui.notifications.info(`Click spawn location for ${createdMonster.name} within ${range} ft of summoner (${gNumSpawned} of ${gNeedSpawn})`);
+        ui.notifications.info(`Haz click en el lugar de colocación de ${createdMonster.name} en un rango de ${range} ft desde el convocador (${gNumSpawned} de ${gNeedSpawn})`);
     }
 }
  
